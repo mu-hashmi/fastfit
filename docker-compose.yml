@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:latest
+    container_name: fastfit-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  agent-memory-server:
+    image: redislabs/agent-memory-server:latest
+    container_name: fastfit-agent-memory
+    ports:
+      - "8001:8000"
+    environment:
+      - DISABLE_AUTH=true
+      - REDIS_URL=redis://redis:6379
+      - LONG_TERM_MEMORY=true
+      - ENABLE_DISCRETE_MEMORY_EXTRACTION=true
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis-data:
+

@@ -1,154 +1,176 @@
-# Agents.md – Hackathon System Overview
+## **Overview**
 
+**FastFit Radar** is an agent-driven personalized clothing notification system that monitors brand new releases from RSS feeds, stores products in Redis Memory, learns user preferences from feedback, and sends personalized email notifications based on individual taste profiles.
 
+Agents operate in a loop:  
+ **Fetch RSS Feeds → Store Products in Redis Memory → Match Products to User Preferences → Send Personalized Notifications → Learn from Feedback.**
 
-## Overview
-
-This hackathon project is a multi-agent AI system that predicts the next fashion trend and generates AI-based clothing visuals. It uses **Postman MCP**, **Redis**, and **Sanity** in innovative ways to simulate parallel agent workflows, state caching, and live content publishing. Built in under 2 hours using FastAPI + hosted AI tools, the system is optimized for demo impact.
-
----
-
-## 🧠 Agent Architecture
-
-### 1. 🧵 Trend Agent (`/trend`)
-
-* **Purpose**: Synthesizes a future clothing trend based on social buzz or sales keywords.
-
-* **Input**: Text signals (hashtags, product trends).
-
-* **Output**: `trend_name`, `trend_description`.
-
-* **Backend**: Python (FastAPI), optional use of OpenAI or Claude to generate natural language trend descriptions.
-
-### 2. 🖼️ Image Generation Agent (`/generate-images`)
-
-* **Purpose**: Turns a trend description into visuals using open-source diffusion models.
-
-* **Input**: `trend_description`, `num_images`
-
-* **Output**: List of `image_urls`
-
-* **Backend**: Async FastAPI with parallel `httpx` calls to hosted **FLUX.1** or **Stable Diffusion 3** (e.g., via Replicate, Fal).
-
-### 3. 🤖 Orchestrator Agent (`/run-pipeline`)
-
-* **Purpose**: Coordinates the full pipeline: checks Redis cache, calls trend + image agents in sequence.
-
-* **Behavior**:
-
-  * If Redis has a cached result: return it
-
-  * Else:
-
-    1. Call `/trend`
-
-    2. Call `/generate-images` in parallel
-
-    3. Publish results to **Sanity**
-
-    4. Cache in Redis
-
-* **Output**: Final payload with trend + images, ready for frontend or export
+The goal is **personalization \+ speed**, not complexity.
 
 ---
 
-## 🗃️ Redis – Smart Coordination Layer
+## **Core Data Sources**
 
-* **Purpose**: Speed and fault tolerance via caching.
+* **RSS Feeds (easiest for POC)**
 
-* **Uses**:
+  * Fashion brand RSS feeds (Adidas, HYPEBEAST, Luxury Daily, etc.)
 
-  * Cache trend + image outputs (`pipeline:{hash}`) for 15–30 mins
+  * Poll feeds every 5-10 minutes for new product releases
 
-  * Share intermediate state between agents
-
-  * Avoid redundant API calls during multiple orchestrator runs
-
-* **Bonus**: Trend data in Redis can be visualized or scored in a leaderboard (e.g., most popular trend of the day)
+  * Extract: product name, description, brand, image URL, link, release date
 
 ---
 
-## 📡 Postman + MCP – API & Agent Control Layer
+## **Memory Layer (Redis/RedisVL via Agent Memory Server)**
 
-* **Postman Use**:
+Each product is stored as:
 
-  * All agents (`/trend`, `/generate-images`, `/run-pipeline`) defined in a Postman Collection
+`{`  
+  `"id": "string",`  
+  `"text": "product name + description",`  
+  `"brand": "string",`  
+  `"image_url": "string",`  
+  `"product_url": "string",`  
+  `"embedding": [vector]`  
+`}`
 
-  * Collection imported into MCP
+Each user preference is stored as:
 
-* **MCP Use**:
+`{`  
+  `"user_id": "email",`  
+  `"liked_product_ids": ["id1", "id2"],`  
+  `"disliked_product_ids": ["id3"],`  
+  `"preferred_brands": ["brand1", "brand2"],`  
+  `"taste_profile_embedding": [vector],`  
+  `"notification_frequency": "daily|weekly|realtime"`  
+`}`
 
-  * Turns your endpoints into "tools" a Claude or GPT agent can control via natural language
+Vector search: Used for matching products to user taste profiles via semantic similarity.
 
-  * AI can reason: "First I'll get a trend, then generate images, then publish"
-
-  * **MVP Demo**: Live call to `/run-pipeline` from Claude via MCP
-
-* **Why it's innovative**:
-
-  * You orchestrate your **entire pipeline with an LLM and Postman**, without writing glue code
-
-  * Makes your hackathon feel like AGI-powered orchestration
-
----
-
-## 🗞️ Sanity – Headless CMS Output Layer
-
-* **Purpose**: Persist & publish final trend results for live display or front-end consumption
-
-* **Used for**:
-
-  * Posting each trend as a new document (e.g., `trend_{date}`)
-
-  * Includes `title`, `description`, and `image_urls`
-
-  * Allows you to build a **fashion trend showcase site** or dashboard on top of Sanity
-
-* **Bonus**:
-
-  * You can use **GROQ** to query trends by tag, date, or keyword
-
-  * Use Sanity webhooks to trigger email or Slack alerts when a new trend is published
+Agents must write products to Redis **before** matching.
 
 ---
 
-## 🧪 Demo Tips for Hackathon
+## **User Preference Learning**
 
-* Pre-load a few sample signals like:
+Input: User feedback (good/bad clicks on email notifications)
 
-  * Social: `#balletcore`, `#coquette`, `#retro90s`
+Process:
+1. Store liked/disliked product IDs
+2. Extract embeddings from liked products
+3. Build taste profile embedding (average of liked products)
+4. Update preferred brands based on liked products
+5. Use taste profile for future product matching
 
-  * Sales: "plaid skirts up 45%", "cropped puffer jackets"
-
-* Hit `/run-pipeline` in Postman or via Claude (MCP)
-
-* Show:
-
-  * JSON output (trend + images)
-
-  * Sanity Studio with newly published trend
-
-  * Optional: embed the image URLs into a frontend like Vercel/Next.js
+Output: Updated user preference profile in Redis Memory
 
 ---
 
-## ✨ Innovation Summary
+## **Product Matching (Semantic Search)**
 
-| Component       | Innovative Use                                         |
+Input: New products + User taste profile
 
-| --------------- | ------------------------------------------------------ |
+Process:
+1. Retrieve user's taste profile embedding from Redis
+2. Search for products similar to taste profile (semantic search)
+3. Filter by preferred brands (if user has preferences)
+4. Exclude already-disliked products
+5. Rank by similarity score
 
-| **Postman MCP** | Agents exposed as LLM-callable tools for auto-pipeline |
+Output: Array of matched products for user:
 
-| **Redis**       | Coordination + speed layer with TTL & shared state     |
-
-| **Sanity**      | Trend publishing CMS for real-time AI content sharing  |
-
-| **Parallelism** | Image generation is async (concurrent API calls)       |
+`{`  
+  `"product_id": "string",`  
+  `"name": "string",`  
+  `"brand": "string",`  
+  `"description": "string",`  
+  `"image_url": "string",`  
+  `"product_url": "string",`  
+  `"similarity_score": number`  
+`}`
 
 ---
 
-## 🔚 Closing
+## **Email Notification System**
 
-You don't need a full LLM backend or scraped data to tell a strong story. This system fakes nothing — every agent works — and thanks to Postman + Sanity + Redis, your hackathon demo shows off AI agents that think, generate, and publish fashion intelligence in real time.
+For each user with matching products:
 
+1. Generate personalized email with top 5-10 matched products
+2. Include good/bad buttons for each product
+3. Track email opens and clicks
+4. Update user preferences based on feedback
+
+Email format:
+- Subject: "New releases matching your style"
+- Body: Product cards with images, links, good/bad buttons
+- Footer: Unsubscribe link, preference settings link
+
+---
+
+## **Expected Agent Behaviors**
+
+1. **Be deterministic** — follow JSON formats exactly.
+
+2. **Be personalized** — only show products matching user taste profiles.
+
+3. **Be efficient** — limit output size; avoid long prose.
+
+4. **Be factual** — never fabricate products or brands.
+
+5. **Be modular** — each step should be callable independently:
+
+   * `fetch_rss_feeds`
+
+   * `store_products_redis`
+
+   * `get_user_preferences`
+
+   * `match_products_to_user`
+
+   * `send_notifications`
+
+   * `update_preferences_from_feedback`
+
+---
+
+## **Typical Workflow**
+
+1. Fetch new products from RSS feeds
+
+2. Embed \+ store products in Redis Memory
+
+3. For each subscribed user:
+
+   a. Retrieve user taste profile
+
+   b. Match products using semantic search
+
+   c. Filter by preferences (brands, exclude disliked)
+
+   d. Generate personalized email
+
+   e. Send notification (respecting frequency settings)
+
+4. Process feedback from email clicks
+
+5. Update user preferences in Redis Memory
+
+---
+
+## **Error Handling**
+
+* If RSS fetch fails → return empty product list, retry next cycle.
+
+* If embeddings fail → skip that product.
+
+* If user has no preferences yet → show general popular products.
+
+* If email send fails → log error, retry next cycle.
+
+* If preference update fails → log error, don't crash.
+
+---
+
+## **Output Requirements**
+
+All agent-tool outputs should be concise, JSON-first, low token count, and reproducible.
