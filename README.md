@@ -148,7 +148,6 @@ You can adjust polling intervals via environment variables:
 ## Project Structure
 
 ```
-agent-hackathon-sf/
 ├── backend/
 │   ├── main.py              # FastAPI application (starts polling service on startup)
 │   ├── polling_service.py   # Background polling service for RSS feed polling
